@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-**抖音自动获客工具** — 本地运行的 Node.js 工具，自动采集抖音竞品视频评论，AI 筛选购买意向用户，自动回复评论 + 人工审核后发私信。
+**Sonar** — 本地运行的 Node.js 工具，自动采集抖音竞品视频评论，AI 筛选购买意向用户，自动回复评论 + 人工审核后发私信。
 
 ## 启动
 
