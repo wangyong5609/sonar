@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>抖音自动获客</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #f5f5f5; }
+    nav { background: #fe2c55; padding: 12px 24px; color: white; display: flex; gap: 20px; align-items: center; }
+    nav .title { font-size: 18px; font-weight: bold; margin-right: auto; }
+    nav a { color: white; text-decoration: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+    nav a.active, nav a:hover { background: rgba(255,255,255,0.2); }
+    .page { display: none; padding: 24px; max-width: 960px; margin: 0 auto; }
+    .page.active { display: block; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .card h3 { margin-bottom: 12px; }
+    .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .btn-primary { background: #fe2c55; color: white; }
+    .btn-danger { background: #ff4d4f; color: white; }
+    .btn-success { background: #52c41a; color: white; }
+    .btn-skip { background: #f0f0f0; color: #333; }
+    input, textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; margin-bottom: 8px; }
+    textarea { height: 80px; resize: vertical; }
+    .badge { padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+    .badge-high { background: #fff1f0; color: #cf1322; }
+    .badge-low { background: #fff7e6; color: #d46b08; }
+    .score { font-weight: bold; color: #fe2c55; }
+    .flex { display: flex; gap: 8px; align-items: flex-start; }
+    .flex-1 { flex: 1; }
+    .text-sm { font-size: 13px; }
+    .text-muted { color: #999; }
+    .mt-8 { margin-top: 8px; }
+    .login-status { font-size: 13px; padding: 4px 10px; border-radius: 12px; }
+    .login-ok { background: #f6ffed; color: #389e0d; }
+    .login-no { background: #fff1f0; color: #cf1322; }
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="title">🎯 抖音自动获客</span>
+    <a onclick="showPage('accounts')" class="active" id="nav-accounts">竞品管理</a>
+    <a onclick="showPage('leads')" id="nav-leads">线索列表</a>
+    <a onclick="showPage('queue')" id="nav-queue">私信队列 <span id="queue-badge"></span></a>
+    <a onclick="showPage('settings')" id="nav-settings">设置</a>
+    <span id="login-status" class="login-status login-no">未登录</span>
+    <button class="btn btn-primary" onclick="doLogin()" id="login-btn">登录抖音</button>
+  </nav>
+
+  <!-- 竞品管理 -->
+  <div class="page active" id="page-accounts">
+    <div class="card">
+      <h3>添加竞品账号</h3>
+      <input id="acc-name" placeholder="账号名称（备注）">
+      <input id="acc-url" placeholder="抖音主页链接 https://www.douyin.com/user/xxx">
+      <button class="btn btn-primary" onclick="addAccount()">添加</button>
+    </div>
+    <div id="accounts-list"></div>
+    <div class="card" style="margin-top:16px">
+      <h3>采集评论</h3>
+      <input id="collect-account" placeholder="竞品账号ID（见上方列表）">
+      <input id="collect-url" placeholder="视频链接 https://www.douyin.com/video/xxx">
+      <button class="btn btn-primary" onclick="doCollect()" id="collect-btn">开始采集</button>
+      <p id="collect-result" class="mt-8 text-sm text-muted"></p>
+    </div>
+  </div>
+
+  <!-- 线索列表 -->
+  <div class="page" id="page-leads">
+    <button class="btn btn-primary" onclick="loadLeads()" style="margin-bottom:16px">刷新</button>
+    <div id="leads-list"></div>
+  </div>
+
+  <!-- 私信队列 -->
+  <div class="page" id="page-queue">
+    <button class="btn btn-primary" onclick="loadQueue()" style="margin-bottom:16px">刷新</button>
+    <div id="queue-list"></div>
+  </div>
+
+  <!-- 设置 -->
+  <div class="page" id="page-settings">
+    <div class="card">
+      <h3>API 配置</h3>
+      <input id="s-apikey" placeholder="Kimi API Key (sk-xxx)" type="password">
+      <h3 class="mt-8">自动评论回复模板</h3>
+      <textarea id="s-reply" placeholder="变量：{nickname}"></textarea>
+      <h3 class="mt-8">私信默认模板</h3>
+      <textarea id="s-dm" placeholder="变量：{nickname}"></textarea>
+      <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+    </div>
+  </div>
+
+  <script>
+    const api = (url, opt) => fetch(url, { headers: {'Content-Type':'application/json'}, ...opt }).then(r => r.json());
+
+    function showPage(name) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+      document.getElementById('page-' + name).classList.add('active');
+      document.getElementById('nav-' + name).classList.add('active');
+      if (name === 'accounts') loadAccounts();
+      if (name === 'leads') loadLeads();
+      if (name === 'queue') loadQueue();
+      if (name === 'settings') loadSettings();
+    }
+
+    async function checkLogin() {
+      const { loggedIn } = await api('/api/login/status');
+      const el = document.getElementById('login-status');
+      const btn = document.getElementById('login-btn');
+      el.textContent = loggedIn ? '已登录' : '未登录';
+      el.className = 'login-status ' + (loggedIn ? 'login-ok' : 'login-no');
+      btn.style.display = loggedIn ? 'none' : 'inline-block';
+    }
+
+    async function doLogin() {
+      const btn = document.getElementById('login-btn');
+      btn.textContent = '等待扫码...';
+      btn.disabled = true;
+      try {
+        await api('/api/login', { method: 'POST' });
+        await checkLogin();
+      } finally {
+        btn.textContent = '登录抖音';
+        btn.disabled = false;
+      }
+    }
+
+    async function loadAccounts() {
+      const accounts = await api('/api/accounts');
+      const el = document.getElementById('accounts-list');
+      if (!accounts.length) { el.innerHTML = '<div class="card text-muted text-sm">暂无竞品账号</div>'; return; }
+      el.innerHTML = accounts.map(a => `
+        <div class="card flex">
+          <div class="flex-1">
+            <strong>${escHtml(a.name)}</strong>
+            <br><a href="${escHtml(a.douyin_url)}" target="_blank" class="text-sm text-muted">${escHtml(a.douyin_url)}</a>
+          </div>
+          <span class="text-sm text-muted">ID: ${a.id}</span>
+          <button class="btn btn-danger" onclick="deleteAccount(${a.id})">删除</button>
+        </div>`).join('');
+    }
+
+    async function addAccount() {
+      const name = document.getElementById('acc-name').value.trim();
+      const douyin_url = document.getElementById('acc-url').value.trim();
+      if (!name || !douyin_url) { alert('请填写名称和链接'); return; }
+      await api('/api/accounts', { method: 'POST', body: JSON.stringify({ name, douyin_url }) });
+      document.getElementById('acc-name').value = '';
+      document.getElementById('acc-url').value = '';
+      loadAccounts();
+    }
+
+    async function deleteAccount(id) {
+      if (!confirm('确认删除？')) return;
+      await api('/api/accounts/' + id, { method: 'DELETE' });
+      loadAccounts();
+    }
+
+    async function doCollect() {
+      const account_id = document.getElementById('collect-account').value.trim();
+      const video_url = document.getElementById('collect-url').value.trim();
+      if (!account_id || !video_url) { alert('请填写账号ID和视频链接'); return; }
+      const btn = document.getElementById('collect-btn');
+      const result = document.getElementById('collect-result');
+      btn.disabled = true; btn.textContent = '采集中...';
+      result.textContent = '正在采集，请稍候（可能需要1-3分钟）...';
+      try {
+        const r = await api('/api/collect', { method: 'POST', body: JSON.stringify({ account_id: Number(account_id), video_url }) });
+        result.textContent = r.error
+          ? '错误: ' + r.error
+          : '✅ 采集完成：' + r.collected + ' 条评论，' + r.highIntent + ' 个高意向线索进入私信队列';
+      } finally {
+        btn.disabled = false; btn.textContent = '开始采集';
+      }
+    }
+
+    async function loadLeads() {
+      const leads = await api('/api/leads');
+      const el = document.getElementById('leads-list');
+      if (!leads.length) { el.innerHTML = '<div class="card text-muted text-sm">暂无线索，请先采集评论</div>'; return; }
+      el.innerHTML = leads.map(l => `
+        <div class="card">
+          <div class="flex">
+            <span class="badge badge-${l.intent_label}">${l.intent_label === 'high' ? '强意向' : '有意向'}</span>
+            <span class="score">${l.intent_score}分</span>
+            <strong>${escHtml(l.user_nickname || '匿名用户')}</strong>
+          </div>
+          <p class="mt-8">${escHtml(l.content)}</p>
+          <p class="mt-8 text-sm text-muted">理由：${escHtml(l.intent_reason || '-')} | 视频：${escHtml(l.video_title || l.video_url)}</p>
+        </div>`).join('');
+    }
+
+    async function loadQueue() {
+      const items = await api('/api/outreach/pending');
+      document.getElementById('queue-badge').textContent = items.length > 0 ? '(' + items.length + ')' : '';
+      const el = document.getElementById('queue-list');
+      if (!items.length) { el.innerHTML = '<div class="card text-muted text-sm">队列为空</div>'; return; }
+      el.innerHTML = items.map(item => `
+        <div class="card" id="q-${item.id}">
+          <div class="flex">
+            <span class="badge badge-high">强意向 ${item.intent_score}分</span>
+            <strong>${escHtml(item.user_nickname || '匿名用户')}</strong>
+          </div>
+          <p class="mt-8 text-sm text-muted">原评论：${escHtml(item.comment_content)}</p>
+          <textarea id="dm-content-${item.id}" class="mt-8">${escHtml(item.content)}</textarea>
+          <div class="flex">
+            <button class="btn btn-success" onclick="sendDm(${item.id}, '${escHtml(item.user_profile_url)}')">发送私信</button>
+            <button class="btn btn-skip" onclick="skipDm(${item.id})">跳过</button>
+          </div>
+        </div>`).join('');
+    }
+
+    async function sendDm(id, profileUrl) {
+      const content = document.getElementById('dm-content-' + id).value;
+      const btn = event.target;
+      btn.disabled = true; btn.textContent = '发送中...';
+      const r = await api('/api/outreach/' + id + '/send', {
+        method: 'POST',
+        body: JSON.stringify({ content, user_profile_url: profileUrl })
+      });
+      if (r.ok) {
+        document.getElementById('q-' + id).remove();
+      } else {
+        alert('发送失败: ' + r.error);
+        btn.disabled = false; btn.textContent = '发送私信';
+      }
+    }
+
+    async function skipDm(id) {
+      await api('/api/outreach/' + id, { method: 'DELETE' });
+      document.getElementById('q-' + id).remove();
+    }
+
+    async function loadSettings() {
+      const s = await api('/api/settings');
+      document.getElementById('s-apikey').value = s.kimi_api_key;
+      document.getElementById('s-reply').value = s.auto_reply_template;
+      document.getElementById('s-dm').value = s.dm_template;
+    }
+
+    async function saveSettings() {
+      await api('/api/settings', { method: 'POST', body: JSON.stringify({
+        kimi_api_key: document.getElementById('s-apikey').value,
+        auto_reply_template: document.getElementById('s-reply').value,
+        dm_template: document.getElementById('s-dm').value,
+      })});
+      alert('保存成功');
+    }
+
+    function escHtml(str) {
+      return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // 初始化
+    checkLogin();
+    loadAccounts();
+    setInterval(checkLogin, 30000);
+  </script>
+</body>
+</html>
